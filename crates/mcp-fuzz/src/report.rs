@@ -38,7 +38,7 @@ pub fn print_summary(init: &InitializeResult, tools: &[Tool], tested: usize, fin
 
     println!("\nFindings (worst first):");
     let mut sorted: Vec<&Finding> = findings.iter().collect();
-    sorted.sort_by(|a, b| b.severity.cmp(&a.severity));
+    sorted.sort_by_key(|f| std::cmp::Reverse(f.severity));
     for f in sorted {
         println!(
             "  [{:<6}] {:<16} {}::{}",

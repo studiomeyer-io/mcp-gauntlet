@@ -19,7 +19,7 @@ cargo deny check                                  # advisories + licenses + sour
 cargo run -p mcp-fuzz -- run --stdio -- cargo run -p mcp-fuzz -- mock
 ```
 
-MSRV is **Rust 1.82** — CI checks it on a pinned 1.82 toolchain plus stable. Your
+MSRV is **Rust 1.86** — CI checks it on a pinned 1.86 toolchain plus stable. Your
 patch needs to compile on the floor.
 
 ## What we accept
@@ -49,7 +49,7 @@ patch needs to compile on the floor.
 1. Open an issue or draft PR first for anything non-trivial.
 2. One logical change per PR. Easier to review, easier to revert.
 3. CI must be green: `fmt --check`, `clippy -- -D warnings` (all-features **and**
-   `--no-default-features`), `test --workspace`, the MSRV-1.82 check, and
+   `--no-default-features`), `test --workspace`, the MSRV-1.86 check, and
    `cargo deny check`.
 4. Add a `CHANGELOG.md` entry under `[Unreleased]` in plain English.
 5. For security-impacting changes, see [SECURITY.md](SECURITY.md) — please email

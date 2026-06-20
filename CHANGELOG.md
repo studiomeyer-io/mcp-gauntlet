@@ -10,7 +10,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Initial release. A Cargo workspace of three crates published to crates.io:
 `mcp-gauntlet-core`, `mcp-fuzz`, and `mcp-storm`. `#![forbid(unsafe_code)]` in all
-three. MSRV 1.82.
+three. MSRV 1.86.
 
 ### Added
 

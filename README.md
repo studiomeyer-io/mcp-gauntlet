@@ -42,7 +42,7 @@ cd mcp-gauntlet && cargo build --release
 # binaries in target/release/{mcp-fuzz,mcp-storm}
 ```
 
-MSRV: Rust 1.82.
+MSRV: Rust 1.86.
 
 ---
 

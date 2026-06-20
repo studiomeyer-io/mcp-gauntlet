@@ -9,7 +9,7 @@ license = "MIT"
 authors = ["StudioMeyer <hello@studiomeyer.io>"]
 repository = "https://github.com/studiomeyer-io/mcp-gauntlet"
 homepage = "https://github.com/studiomeyer-io/mcp-gauntlet"
-rust-version = "1.82"
+rust-version = "1.86"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "time"] }
