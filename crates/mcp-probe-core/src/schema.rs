@@ -193,9 +193,11 @@ fn gen_integer(s: &Map<String, Value>) -> i64 {
             // apply it if it still satisfies the upper bound. (An unsatisfiable
             // multipleOf+min/max is a contradictory schema; leave the clamp.)
             let lo = min.unwrap_or(0);
-            let mut candidate = lo.div_euclid(mult) * mult;
+            // Saturating math: a hostile server can advertise minimum=i64::MAX with
+            // multipleOf, which would otherwise overflow (panic in debug / wrap in release).
+            let mut candidate = lo.div_euclid(mult).saturating_mul(mult);
             if candidate < lo {
-                candidate += mult;
+                candidate = candidate.saturating_add(mult);
             }
             if max.map(|hi| candidate <= hi).unwrap_or(true) {
                 v = candidate;
@@ -646,6 +648,14 @@ mod tests {
         assert_eq!(gen_integer(s.as_object().unwrap()) % 7, 0);
         // contradictory bounds: best-effort, must not panic
         let s = json!({"type":"integer","minimum":15,"maximum":18,"multipleOf":10});
+        let _ = gen_integer(s.as_object().unwrap());
+        // i64 extremes from a hostile server schema must not panic or wrap negative
+        let s = json!({"type":"integer","minimum": i64::MAX, "multipleOf": 10});
+        assert!(
+            gen_integer(s.as_object().unwrap()) >= 0,
+            "must not wrap negative"
+        );
+        let s = json!({"type":"integer","minimum": i64::MIN, "multipleOf": 5});
         let _ = gen_integer(s.as_object().unwrap());
     }
 }

@@ -92,6 +92,11 @@ fn rules() -> Value {
             "Transport error",
             "A transport-level error occurred during a tool call."
         ),
+        rule(
+            "server-unrecovered",
+            "Server did not recover",
+            "The server did not come back after a crash/hang, so fuzzing stopped."
+        ),
     ])
 }
 
