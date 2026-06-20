@@ -42,7 +42,7 @@ pub fn run_stdio_mock() -> ! {
                 json!({
                     "protocolVersion": crate::protocol::LATEST_PROTOCOL_VERSION,
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "mcp-probe-mock", "version": env!("CARGO_PKG_VERSION")}
+                    "serverInfo": {"name": "mcp-gauntlet-mock", "version": env!("CARGO_PKG_VERSION")}
                 }),
             ),
             "notifications/initialized" => { /* notification: no reply */ }
@@ -134,7 +134,7 @@ fn handle_call<W: Write>(out: &mut W, id: Option<Value>, params: Option<&Value>)
         "fragile" => match args.get("input").and_then(Value::as_str) {
             Some(s) if s.len() > 5000 || s.contains('\u{0}') => {
                 eprintln!(
-                    "mcp-probe-mock: FATAL: hostile input to 'fragile' (len={}, has_nul={})",
+                    "mcp-gauntlet-mock: FATAL: hostile input to 'fragile' (len={}, has_nul={})",
                     s.len(),
                     s.contains('\u{0}')
                 );

@@ -1,6 +1,6 @@
 [package]
-name = "mcp-probe-core"
-description = "Shared MCP client, stdio/HTTP transports and schema-driven value generation powering the mcp-probe toolkit (mcp-fuzz + mcp-storm)."
+name = "mcp-gauntlet-core"
+description = "Shared MCP client, stdio/HTTP transports and schema-driven value generation powering the mcp-gauntlet toolkit (mcp-fuzz + mcp-storm)."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

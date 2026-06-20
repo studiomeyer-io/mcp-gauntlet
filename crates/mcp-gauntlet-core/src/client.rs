@@ -201,7 +201,7 @@ impl McpClient {
     pub async fn connect_http(url: &str, default_timeout: Duration) -> Result<McpClient, Error> {
         let client = reqwest::Client::builder()
             .timeout(default_timeout + Duration::from_secs(5))
-            .user_agent(concat!("mcp-probe/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("mcp-gauntlet/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|e| Error::Http(e.to_string()))?;
         Ok(McpClient {
@@ -366,7 +366,7 @@ impl McpClient {
         let params = json!({
             "protocolVersion": LATEST_PROTOCOL_VERSION,
             "capabilities": {},
-            "clientInfo": {"name": "mcp-probe", "version": env!("CARGO_PKG_VERSION")}
+            "clientInfo": {"name": "mcp-gauntlet", "version": env!("CARGO_PKG_VERSION")}
         });
         let res = self.request("initialize", params).await?;
         let init: InitializeResult = serde_json::from_value(res)?;

@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use hdrhistogram::Histogram;
-use mcp_probe_core::protocol::InitializeResult;
+use mcp_gauntlet_core::protocol::InitializeResult;
 use serde::Serialize;
 
 /// Per-tool latency + throughput statistics (all latencies in milliseconds).

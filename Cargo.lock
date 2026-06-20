@@ -590,7 +590,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "mcp-probe-core",
+ "mcp-gauntlet-core",
  "rand 0.8.6",
  "serde",
  "serde_json",
@@ -598,7 +598,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcp-probe-core"
+name = "mcp-gauntlet-core"
 version = "0.1.0"
 dependencies = [
  "rand 0.8.6",
@@ -616,7 +616,7 @@ dependencies = [
  "anyhow",
  "clap",
  "hdrhistogram",
- "mcp-probe-core",
+ "mcp-gauntlet-core",
  "rand 0.8.6",
  "serde",
  "serde_json",

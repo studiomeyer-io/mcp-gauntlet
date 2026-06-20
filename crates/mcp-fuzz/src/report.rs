@@ -1,7 +1,7 @@
 //! Terminal report rendering for a fuzzing run.
 
 use crate::finding::{Finding, Severity};
-use mcp_probe_core::protocol::{InitializeResult, Tool};
+use mcp_gauntlet_core::protocol::{InitializeResult, Tool};
 
 /// Print the human-readable summary to stdout.
 pub fn print_summary(init: &InitializeResult, tools: &[Tool], tested: usize, findings: &[Finding]) {

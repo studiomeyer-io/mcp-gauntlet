@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use clap::Args;
 use hdrhistogram::Histogram;
-use mcp_probe_core::{schema, Error, McpClient};
+use mcp_gauntlet_core::{schema, Error, McpClient};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde_json::Value;

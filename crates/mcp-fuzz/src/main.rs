@@ -38,7 +38,7 @@ enum Command {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Mock => mcp_probe_core::mock::run_stdio_mock(),
+        Command::Mock => mcp_gauntlet_core::mock::run_stdio_mock(),
         Command::Run(args) => {
             let code = engine::run(args).await?;
             std::process::exit(code);

@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use clap::Args;
-use mcp_probe_core::schema;
-use mcp_probe_core::{Error, McpClient};
+use mcp_gauntlet_core::schema;
+use mcp_gauntlet_core::{Error, McpClient};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 

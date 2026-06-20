@@ -1,14 +1,14 @@
 [workspace]
 resolver = "2"
-members = ["crates/mcp-probe-core", "crates/mcp-fuzz", "crates/mcp-storm"]
+members = ["crates/mcp-gauntlet-core", "crates/mcp-fuzz", "crates/mcp-storm"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
 authors = ["StudioMeyer <hello@studiomeyer.io>"]
-repository = "https://github.com/studiomeyer-io/mcp-probe"
-homepage = "https://github.com/studiomeyer-io/mcp-probe"
+repository = "https://github.com/studiomeyer-io/mcp-gauntlet"
+homepage = "https://github.com/studiomeyer-io/mcp-gauntlet"
 rust-version = "1.82"
 
 [workspace.dependencies]

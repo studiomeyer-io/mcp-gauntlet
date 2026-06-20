@@ -1,4 +1,4 @@
-//! # mcp-probe-core
+//! # mcp-gauntlet-core
 //!
 //! Shared building blocks for probing [Model Context Protocol](https://modelcontextprotocol.io)
 //! servers. This crate is the foundation under the [`mcp-fuzz`] and [`mcp-storm`] CLIs but is

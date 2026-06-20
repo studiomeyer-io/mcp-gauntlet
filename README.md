@@ -1,4 +1,4 @@
-# mcp-probe
+# mcp-gauntlet
 
 **A reliability + security toolkit for [Model Context Protocol](https://modelcontextprotocol.io) servers.**
 Two single-binary CLIs that share one fast async MCP client core:
@@ -10,13 +10,13 @@ Two single-binary CLIs that share one fast async MCP client core:
 
 Both are written in Rust: one static binary each, no runtime, drop into any CI. They talk MCP over **stdio** (subprocess) or **Streamable HTTP**.
 
-> Built by [StudioMeyer](https://studiomeyer.io). Companion to [`mcp-armor`](https://github.com/studiomeyer-io/mcp-armor) (runtime defense) — `mcp-probe` is the *pre-deploy* attacker + load generator.
+> Built by [StudioMeyer](https://studiomeyer.io). Companion to [`mcp-armor`](https://github.com/studiomeyer-io/mcp-armor) (runtime defense) — `mcp-gauntlet` is the *pre-deploy* attacker + load generator.
 
 ---
 
 ## Why
 
-MCP servers [fail silently](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2734) and ship fast. Most have **no tests against malformed input** and **no latency budget**. `mcp-probe` gives you both in two commands you can wire into CI today — without writing a single test by hand, because the payloads are derived from the server's own schema.
+MCP servers [fail silently](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/2734) and ship fast. Most have **no tests against malformed input** and **no latency budget**. `mcp-gauntlet` gives you both in two commands you can wire into CI today — without writing a single test by hand, because the payloads are derived from the server's own schema.
 
 ---
 
@@ -27,8 +27,8 @@ MCP servers [fail silently](https://github.com/modelcontextprotocol/modelcontext
 cargo install mcp-fuzz mcp-storm
 
 # or from source
-git clone https://github.com/studiomeyer-io/mcp-probe
-cd mcp-probe && cargo build --release
+git clone https://github.com/studiomeyer-io/mcp-gauntlet
+cd mcp-gauntlet && cargo build --release
 # binaries in target/release/{mcp-fuzz,mcp-storm}
 ```
 
@@ -119,13 +119,13 @@ Over stdio, concurrency is real: requests are multiplexed over the single pipe a
 ## Workspace layout
 
 ```
-mcp-probe/
-├── crates/mcp-probe-core   # shared async MCP client (stdio + HTTP), schema gen, mock server
+mcp-gauntlet/
+├── crates/mcp-gauntlet-core   # shared async MCP client (stdio + HTTP), schema gen, mock server
 ├── crates/mcp-fuzz         # the fuzzer CLI
 └── crates/mcp-storm        # the load tester CLI
 ```
 
-`mcp-probe-core` is published too — it's a small, concurrency-capable MCP client you can use on its own, with a schema-driven value/mutation generator and an in-process [`mock`](crates/mcp-probe-core/src/mock.rs) server (`mcp-fuzz mock` / `mcp-storm mock`) you can point either tool at to try them with zero setup:
+`mcp-gauntlet-core` is published too — it's a small, concurrency-capable MCP client you can use on its own, with a schema-driven value/mutation generator and an in-process [`mock`](crates/mcp-gauntlet-core/src/mock.rs) server (`mcp-fuzz mock` / `mcp-storm mock`) you can point either tool at to try them with zero setup:
 
 ```bash
 mcp-fuzz run --stdio -- mcp-fuzz mock     # fuzz the bundled demo server

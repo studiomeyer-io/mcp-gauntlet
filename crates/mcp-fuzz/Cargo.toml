@@ -17,11 +17,11 @@ path = "src/main.rs"
 
 [features]
 default = ["http"]
-# Streamable HTTP transport, forwarded to mcp-probe-core.
-http = ["mcp-probe-core/http"]
+# Streamable HTTP transport, forwarded to mcp-gauntlet-core.
+http = ["mcp-gauntlet-core/http"]
 
 [dependencies]
-mcp-probe-core = { path = "../mcp-probe-core", version = "0.1.0", default-features = false }
+mcp-gauntlet-core = { path = "../mcp-gauntlet-core", version = "0.1.0", default-features = false }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

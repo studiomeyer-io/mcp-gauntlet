@@ -1,7 +1,7 @@
 //! Findings produced by a fuzzing run.
 
-use mcp_probe_core::protocol::RpcError;
-use mcp_probe_core::schema::Mutation;
+use mcp_gauntlet_core::protocol::RpcError;
+use mcp_gauntlet_core::schema::Mutation;
 use serde::Serialize;
 
 /// Severity of a finding. Ordered `Info < Low < Medium < High` for `--fail-on` gating.

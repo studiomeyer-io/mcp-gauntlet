@@ -42,7 +42,7 @@ pub fn to_sarif(findings: &[Finding]) -> Vec<u8> {
                 "driver": {
                     "name": "mcp-fuzz",
                     "version": env!("CARGO_PKG_VERSION"),
-                    "informationUri": "https://github.com/studiomeyer-io/mcp-probe",
+                    "informationUri": "https://github.com/studiomeyer-io/mcp-gauntlet",
                     "rules": rules(),
                 }
             },
