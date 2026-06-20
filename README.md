@@ -139,6 +139,16 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-features
 ```
 
+## Part of the StudioMeyer MCP toolkit
+
+A small family of focused, production-grade tools for building and operating MCP servers — mix and match:
+
+- [mcp-armor](https://github.com/studiomeyer-io/mcp-armor) — runtime defense sidecar: scans tool calls, verifies signed manifests, blocks known-bad CVEs
+- **mcp-gauntlet** *(this one)* — pre-deploy `mcp-fuzz` (schema-aware fuzzer) + `mcp-storm` (load tester)
+- [mcp-otel](https://github.com/studiomeyer-io/mcp-otel) — W3C Trace Context → OpenTelemetry bridge
+- [mcp-cache-kit](https://github.com/studiomeyer-io/mcp-cache-kit) — leak-safe SEP-2549 caching (`ttlMs` + `cacheScope`)
+- [skilldoctor](https://github.com/studiomeyer-io/skilldoctor) — linter + security scanner for agent skill files
+
 ## License
 
 MIT © StudioMeyer. See [LICENSE](LICENSE).
