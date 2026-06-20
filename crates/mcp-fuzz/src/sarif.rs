@@ -2,6 +2,7 @@
 
 use crate::finding::Finding;
 use serde_json::{json, Value};
+use std::hash::{Hash, Hasher};
 
 /// Render findings as a SARIF 2.1.0 document (pretty JSON bytes).
 pub fn to_sarif(findings: &[Finding]) -> Vec<u8> {
@@ -14,6 +15,14 @@ pub fn to_sarif(findings: &[Finding]) -> Vec<u8> {
                 "message": {
                     "text": format!("[{}] {} ({}): {}", f.tool, f.kind, f.category, f.description)
                 },
+                "locations": [{
+                    "logicalLocations": [{
+                        "name": f.tool,
+                        "fullyQualifiedName": format!("tool/{}", f.tool),
+                        "kind": "function"
+                    }]
+                }],
+                "partialFingerprints": { "mcpProbe/v1": fingerprint(f) },
                 "properties": {
                     "tool": f.tool,
                     "severity": f.severity.label(),
@@ -42,6 +51,18 @@ pub fn to_sarif(findings: &[Finding]) -> Vec<u8> {
     });
 
     serde_json::to_vec_pretty(&doc).unwrap_or_else(|_| b"{}".to_vec())
+}
+
+/// Stable per-finding fingerprint for SARIF dedup across runs: tool + kind +
+/// category + the exact arguments. Uses the std fixed-seed hasher (deterministic
+/// within a toolchain), which is what GitHub code scanning needs for dedup.
+fn fingerprint(f: &Finding) -> String {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    f.tool.hash(&mut h);
+    f.kind.hash(&mut h);
+    f.category.hash(&mut h);
+    f.arguments.to_string().hash(&mut h);
+    format!("{:016x}", h.finish())
 }
 
 fn rules() -> Value {

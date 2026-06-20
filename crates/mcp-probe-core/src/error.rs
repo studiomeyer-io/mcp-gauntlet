@@ -40,11 +40,3 @@ pub enum Error {
     #[error("protocol error: {0}")]
     Protocol(String),
 }
-
-impl Error {
-    /// True when the error indicates the server process most likely crashed or hung,
-    /// i.e. the kind of finding a fuzzer should escalate.
-    pub fn is_liveness_failure(&self) -> bool {
-        matches!(self, Error::ConnectionClosed { .. } | Error::Timeout)
-    }
-}

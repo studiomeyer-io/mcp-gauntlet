@@ -108,9 +108,9 @@ impl Target {
             #[cfg(feature = "http")]
             Target::Http(url) => McpClient::connect_http(url, timeout).await,
             #[cfg(not(feature = "http"))]
-            Target::Http(_) => Err(Error::Protocol(
-                "HTTP transport not compiled in (enable the `http` feature)".into(),
-            )),
+            Target::Http(url) => Err(Error::Protocol(format!(
+                "HTTP transport not compiled in (enable the `http` feature); requested {url}"
+            ))),
         }
     }
 }

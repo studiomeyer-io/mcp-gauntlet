@@ -11,18 +11,22 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde_json::{json, Value};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::Error;
 use crate::protocol::{
     CallToolResult, InitializeResult, JsonRpcResponse, ListToolsResult, RpcError, Tool,
-    LATEST_PROTOCOL_VERSION,
+    JSONRPC_VERSION, LATEST_PROTOCOL_VERSION,
 };
 
 /// How many trailing stderr lines to retain for crash diagnostics.
 const STDERR_TAIL: usize = 60;
+
+/// Hard cap on a single JSON-RPC line. A server that never sends a newline can't
+/// make us buffer unboundedly (DoS); 16 MiB is far above any real MCP message.
+const MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
 
 /// An MCP client handle. Clone freely; clones share the same connection.
 #[derive(Clone, Debug)]
@@ -133,29 +137,35 @@ impl McpClient {
             }
         });
 
-        // Reader task: demultiplexes responses by id; on EOF, fails all pending callers.
+        // Reader task: demultiplexes responses by id, with a hard per-line cap so a
+        // hostile server that never sends a newline can't drive us to OOM. On
+        // EOF/overflow the connection is marked dead and pending callers are failed.
         {
             let state = state.clone();
             tokio::spawn(async move {
-                let mut lines = BufReader::new(stdout).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    if line.trim().is_empty() {
-                        continue;
-                    }
-                    if let Ok(resp) = serde_json::from_str::<JsonRpcResponse>(&line) {
-                        if let Some(id) = resp.id.as_ref().and_then(value_as_u64) {
-                            if let Some(tx) = state.pending.lock().unwrap().remove(&id) {
-                                let r = match resp.error {
-                                    Some(e) => Err(e),
-                                    None => Ok(resp.result.unwrap_or(Value::Null)),
-                                };
-                                let _ = tx.send(r);
-                            }
+                let mut reader = BufReader::new(stdout);
+                let mut line: Vec<u8> = Vec::with_capacity(8192);
+                let mut chunk = [0u8; 8192];
+                'read: loop {
+                    let n = match reader.read(&mut chunk).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => n,
+                    };
+                    let mut start = 0;
+                    for i in 0..n {
+                        if chunk[i] == b'\n' {
+                            line.extend_from_slice(&chunk[start..i]);
+                            dispatch_line(&line, &state);
+                            line.clear();
+                            start = i + 1;
                         }
-                        // Server-initiated requests/notifications are ignored by the probe.
+                    }
+                    line.extend_from_slice(&chunk[start..n]);
+                    if line.len() > MAX_LINE_BYTES {
+                        break 'read; // refuse to buffer an unbounded line
                     }
                 }
-                // EOF / read error → connection is dead.
+                // EOF / read error / overflow → connection is dead.
                 state.alive.store(false, Ordering::SeqCst);
                 state.pending.lock().unwrap().clear(); // dropping senders surfaces ConnectionClosed
             });
@@ -244,7 +254,8 @@ impl McpClient {
             #[cfg(feature = "http")]
             Transport::Http(h) => {
                 let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
-                let body = json!({"jsonrpc":"2.0","id":id,"method":method,"params":params});
+                let body =
+                    json!({"jsonrpc":JSONRPC_VERSION,"id":id,"method":method,"params":params});
                 let fut = self.http_post(h, &body);
                 let text = tokio::time::timeout(timeout, fut)
                     .await
@@ -263,7 +274,7 @@ impl McpClient {
                         stderr: s.stderr_snapshot(),
                     });
                 }
-                let req = json!({"jsonrpc":"2.0","method":method,"params":params});
+                let req = json!({"jsonrpc":JSONRPC_VERSION,"method":method,"params":params});
                 let mut line = serde_json::to_vec(&req)?;
                 line.push(b'\n');
                 s.writer_tx
@@ -275,7 +286,7 @@ impl McpClient {
             }
             #[cfg(feature = "http")]
             Transport::Http(h) => {
-                let body = json!({"jsonrpc":"2.0","method":method,"params":params});
+                let body = json!({"jsonrpc":JSONRPC_VERSION,"method":method,"params":params});
                 let _ = self.http_post(h, &body).await?;
                 Ok(())
             }
@@ -298,7 +309,7 @@ impl McpClient {
         let (tx, rx) = oneshot::channel();
         s.pending.lock().unwrap().insert(id, tx);
 
-        let req = json!({"jsonrpc":"2.0","id":id,"method":method,"params":params});
+        let req = json!({"jsonrpc":JSONRPC_VERSION,"id":id,"method":method,"params":params});
         let mut line = serde_json::to_vec(&req)?;
         line.push(b'\n');
         if s.writer_tx.send(line).is_err() {
@@ -397,6 +408,26 @@ impl McpClient {
 fn value_as_u64(v: &Value) -> Option<u64> {
     v.as_u64()
         .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+}
+
+/// Parse one newline-delimited JSON-RPC line and, if it correlates to a pending
+/// request id, deliver the result/error to the waiting caller.
+fn dispatch_line(line: &[u8], state: &StdioInner) {
+    if line.iter().all(u8::is_ascii_whitespace) {
+        return;
+    }
+    if let Ok(resp) = serde_json::from_slice::<JsonRpcResponse>(line) {
+        if let Some(id) = resp.id.as_ref().and_then(value_as_u64) {
+            if let Some(tx) = state.pending.lock().unwrap().remove(&id) {
+                let r = match resp.error {
+                    Some(e) => Err(e),
+                    None => Ok(resp.result.unwrap_or(Value::Null)),
+                };
+                let _ = tx.send(r);
+            }
+        }
+        // Server-initiated requests/notifications are ignored by the probe.
+    }
 }
 
 /// Parse a JSON-RPC payload that may arrive as a single JSON body or an SSE stream.

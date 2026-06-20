@@ -17,7 +17,7 @@ pub struct ToolStats {
     pub errors: u64,
     /// Error rate as a percentage (0–100).
     pub error_rate_pct: f64,
-    /// Successful calls per second over the measured window.
+    /// Calls per second over the measured window (all calls, errors included).
     pub throughput_rps: f64,
     /// Median latency (ms).
     pub p50_ms: f64,
@@ -126,9 +126,28 @@ pub fn print_summary(
 }
 
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
+    // Count by chars, never byte-slice — tool names are server-controlled and may
+    // contain multi-byte UTF-8 that would panic a byte slice off a char boundary.
+    if s.chars().count() <= max {
         s.to_string()
     } else {
-        format!("{}…", &s[..max.saturating_sub(1)])
+        let kept: String = s.chars().take(max.saturating_sub(1)).collect();
+        format!("{kept}…")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate;
+
+    #[test]
+    fn truncate_is_char_safe_on_multibyte() {
+        // A server-controlled tool name longer than `max` with a multi-byte char
+        // near the cut must truncate by chars, never panic on a byte boundary.
+        let name = "abcdefghijklmnopqré-stuvwxyz0123";
+        let out = truncate(name, 20);
+        assert!(out.chars().count() <= 20);
+        assert!(out.ends_with('…'));
+        assert_eq!(truncate("short", 20), "short");
     }
 }

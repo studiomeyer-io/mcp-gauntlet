@@ -20,9 +20,19 @@ jobs:
           cargo test --all-features --workspace
       - name: Publish mcp-probe-core
         run: cargo publish -p mcp-probe-core --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: Wait for crates.io to index
-        run: sleep 30
-      - name: Publish mcp-fuzz
-        run: cargo publish -p mcp-fuzz --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: Publish mcp-storm
-        run: cargo publish -p mcp-storm --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Publish mcp-fuzz (retry until core is indexed)
+        run: |
+          for i in $(seq 1 20); do
+            cargo publish -p mcp-fuzz --token ${{ secrets.CARGO_REGISTRY_TOKEN }} && exit 0
+            echo "crates.io has not indexed mcp-probe-core yet (attempt $i); retrying in 15s"
+            sleep 15
+          done
+          echo "mcp-fuzz publish failed after retries"; exit 1
+      - name: Publish mcp-storm (retry until core is indexed)
+        run: |
+          for i in $(seq 1 20); do
+            cargo publish -p mcp-storm --token ${{ secrets.CARGO_REGISTRY_TOKEN }} && exit 0
+            echo "crates.io has not indexed mcp-probe-core yet (attempt $i); retrying in 15s"
+            sleep 15
+          done
+          echo "mcp-storm publish failed after retries"; exit 1

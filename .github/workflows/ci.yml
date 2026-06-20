@@ -36,3 +36,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.82.0
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --all-features
+
+  no-default-features:
+    name: no-default-features (http off)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Build + clippy with the http feature off
+        run: |
+          cargo build --workspace --no-default-features
+          cargo clippy --workspace --all-targets --no-default-features -- -D warnings

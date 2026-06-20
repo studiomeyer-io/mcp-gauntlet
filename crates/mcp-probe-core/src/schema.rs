@@ -188,10 +188,17 @@ fn gen_integer(s: &Map<String, Value>) -> i64 {
         }
     }
     if let Some(mult) = s.get("multipleOf").and_then(Value::as_i64) {
-        if mult != 0 {
-            v = (v / mult) * mult;
-            if v == 0 {
-                v = mult;
+        if mult > 0 {
+            // Smallest multiple of `mult` that is >= the lower bound, then only
+            // apply it if it still satisfies the upper bound. (An unsatisfiable
+            // multipleOf+min/max is a contradictory schema; leave the clamp.)
+            let lo = min.unwrap_or(0);
+            let mut candidate = lo.div_euclid(mult) * mult;
+            if candidate < lo {
+                candidate += mult;
+            }
+            if max.map(|hi| candidate <= hi).unwrap_or(true) {
+                v = candidate;
             }
         }
     }
@@ -248,13 +255,13 @@ impl MutationCategory {
 
     /// Whether a server returning a *successful* (non-error) result for this mutation is
     /// itself noteworthy — i.e. the input unambiguously violates the schema, so silent
-    /// acceptance means the server isn't validating.
+    /// acceptance means the server isn't validating. Deliberately excludes `Structural`
+    /// (e.g. `arguments = null`/`[]`): a tool with only optional params may legitimately
+    /// treat those as an empty object, so flagging it produces noise on well-behaved servers.
     pub fn is_clear_schema_violation(self) -> bool {
         matches!(
             self,
-            MutationCategory::TypeConfusion
-                | MutationCategory::MissingRequired
-                | MutationCategory::Structural
+            MutationCategory::TypeConfusion | MutationCategory::MissingRequired
         )
     }
 }
@@ -624,5 +631,21 @@ mod tests {
         let da: Vec<_> = a.iter().map(|m| &m.description).collect();
         let db: Vec<_> = b.iter().map(|m| &m.description).collect();
         assert_eq!(da, db);
+    }
+
+    #[test]
+    fn gen_integer_multiple_of_stays_in_bounds() {
+        // round UP to the next multiple >= minimum
+        let s = json!({"type":"integer","minimum":25,"multipleOf":10});
+        assert_eq!(gen_integer(s.as_object().unwrap()), 30);
+        // 0 is a valid multiple <= maximum
+        let s = json!({"type":"integer","maximum":5,"multipleOf":10});
+        assert_eq!(gen_integer(s.as_object().unwrap()), 0);
+        // plain multipleOf yields an actual multiple
+        let s = json!({"type":"integer","multipleOf":7});
+        assert_eq!(gen_integer(s.as_object().unwrap()) % 7, 0);
+        // contradictory bounds: best-effort, must not panic
+        let s = json!({"type":"integer","minimum":15,"maximum":18,"multipleOf":10});
+        let _ = gen_integer(s.as_object().unwrap());
     }
 }

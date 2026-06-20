@@ -93,9 +93,9 @@ impl Target {
             #[cfg(feature = "http")]
             Target::Http(url) => McpClient::connect_http(url, timeout).await,
             #[cfg(not(feature = "http"))]
-            Target::Http(_) => Err(Error::Protocol(
-                "HTTP transport not compiled in (enable the `http` feature)".into(),
-            )),
+            Target::Http(url) => Err(Error::Protocol(format!(
+                "HTTP transport not compiled in (enable the `http` feature); requested {url}"
+            ))),
         }
     }
 }
@@ -130,7 +130,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<i32> {
     let mut findings: Vec<Finding> = Vec::new();
     let mut tested = 0usize;
 
-    for tool in &tools {
+    'fuzz: for tool in &tools {
         if !args.tools.is_empty() && !args.tools.contains(&tool.name) {
             continue;
         }
@@ -152,11 +152,23 @@ pub async fn run(args: RunArgs) -> anyhow::Result<i32> {
                 }
                 Err(Error::Timeout) => {
                     findings.push(Finding::hang(&tool.name, &m, args.timeout_ms));
-                    client = reconnect(&target, timeout).await?;
+                    match recover(&target, timeout).await {
+                        Some(c) => client = c,
+                        None => {
+                            findings.push(Finding::not_recovered(&tool.name));
+                            break 'fuzz;
+                        }
+                    }
                 }
                 Err(Error::ConnectionClosed { stderr }) => {
                     findings.push(Finding::crash(&tool.name, &m, stderr));
-                    client = reconnect(&target, timeout).await?;
+                    match recover(&target, timeout).await {
+                        Some(c) => client = c,
+                        None => {
+                            findings.push(Finding::not_recovered(&tool.name));
+                            break 'fuzz;
+                        }
+                    }
                 }
                 Err(Error::Rpc(e)) => {
                     // -32602 (invalid params) and friends mean the server validated input —
@@ -194,12 +206,11 @@ pub async fn run(args: RunArgs) -> anyhow::Result<i32> {
     })
 }
 
-async fn reconnect(target: &Target, timeout: Duration) -> anyhow::Result<McpClient> {
-    let client = target
-        .connect(timeout)
-        .await
-        .map_err(|e| anyhow::anyhow!("reconnect after crash/hang failed: {e}"))?;
-    // Best-effort re-handshake; ignore errors so a flaky server doesn't abort the run.
-    let _ = client.initialize().await;
-    Ok(client)
+/// Try to bring a server back after a crash/hang. Returns a live, re-initialized
+/// client, or `None` if it did not recover — so the caller stops fuzzing instead
+/// of mis-attributing every later payload to a fresh "crash".
+async fn recover(target: &Target, timeout: Duration) -> Option<McpClient> {
+    let client = target.connect(timeout).await.ok()?;
+    client.initialize().await.ok()?;
+    client.is_alive().then_some(client)
 }

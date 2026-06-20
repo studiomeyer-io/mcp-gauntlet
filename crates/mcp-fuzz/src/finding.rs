@@ -131,4 +131,22 @@ impl Finding {
             detail: Some(detail),
         }
     }
+
+    /// The server did not come back after a crash/hang, so fuzzing stopped. One
+    /// such finding replaces the storm of mis-attributed false crashes a dead
+    /// server would otherwise produce.
+    pub fn not_recovered(tool: &str) -> Self {
+        Finding {
+            severity: Severity::High,
+            kind: "server-unrecovered",
+            tool: tool.to_string(),
+            category: "lifecycle",
+            description: format!(
+                "server did not recover after a crash/hang while fuzzing '{tool}'; \
+                 stopped to avoid blaming later payloads"
+            ),
+            arguments: serde_json::Value::Null,
+            detail: None,
+        }
+    }
 }

@@ -58,7 +58,7 @@ It connects, calls `tools/list`, and for every tool generates payloads driven by
 
 Outcomes are classified: a dropped connection ⇒ **crash** (HIGH), a timeout ⇒ **hang** (HIGH), `-32603` ⇒ **internal-error** (MEDIUM), success on schema-invalid input ⇒ **accepted-invalid** (LOW). A clean `-32602 invalid params` is treated as the server *correctly* validating — not a finding.
 
-Runs are reproducible (`--seed`). After a crash the fuzzer respawns the server and keeps going.
+Runs are reproducible (`--seed`). After a crash the fuzzer respawns the server and continues; if the server can't be brought back, it records that once and stops cleanly, rather than blaming every later payload for the original crash.
 
 ```text
 mcp-fuzz report
