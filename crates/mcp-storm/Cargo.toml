@@ -1,0 +1,34 @@
+[package]
+name = "mcp-storm"
+description = "Load tester for Model Context Protocol (MCP) servers — k6-style concurrent tool calls with p50/p95/p99 latency, throughput, and CI gating."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+keywords = ["mcp", "load-testing", "benchmark", "performance", "cli"]
+categories = ["command-line-utilities", "development-tools::testing"]
+
+[[bin]]
+name = "mcp-storm"
+path = "src/main.rs"
+
+[features]
+default = ["http"]
+# Streamable HTTP transport, forwarded to mcp-probe-core.
+http = ["mcp-probe-core/http"]
+
+[dependencies]
+mcp-probe-core = { path = "../mcp-probe-core", version = "0.1.0", default-features = false }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+rand = { workspace = true }
+hdrhistogram = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

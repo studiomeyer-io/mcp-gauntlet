@@ -1,0 +1,6 @@
+/target
+**/*.rs.bk
+Cargo.lock.orig
+*.sarif
+*.profraw
+.DS_Store

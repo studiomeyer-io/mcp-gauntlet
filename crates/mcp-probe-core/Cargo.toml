@@ -1,0 +1,27 @@
+[package]
+name = "mcp-probe-core"
+description = "Shared MCP client, stdio/HTTP transports and schema-driven value generation powering the mcp-probe toolkit (mcp-fuzz + mcp-storm)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+keywords = ["mcp", "model-context-protocol", "json-rpc", "client", "testing"]
+categories = ["development-tools::testing", "api-bindings"]
+
+[features]
+default = ["http"]
+http = ["dep:reqwest"]
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+rand = { workspace = true }
+reqwest = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "process", "io-util", "sync"] }

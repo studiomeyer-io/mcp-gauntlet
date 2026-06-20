@@ -1,0 +1,28 @@
+name: Release
+
+# Publishes all three crates to crates.io on a v* tag, in dependency order.
+# Requires the CARGO_REGISTRY_TOKEN secret.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify
+        run: |
+          cargo fmt --all --check
+          cargo clippy --all-targets --all-features -- -D warnings
+          cargo test --all-features --workspace
+      - name: Publish mcp-probe-core
+        run: cargo publish -p mcp-probe-core --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Wait for crates.io to index
+        run: sleep 30
+      - name: Publish mcp-fuzz
+        run: cargo publish -p mcp-fuzz --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Publish mcp-storm
+        run: cargo publish -p mcp-storm --token ${{ secrets.CARGO_REGISTRY_TOKEN }}

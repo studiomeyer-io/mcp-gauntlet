@@ -1,0 +1,33 @@
+[package]
+name = "mcp-fuzz"
+description = "Schema-aware fuzzer for Model Context Protocol (MCP) servers — generates hostile and boundary payloads from each tool's inputSchema, detects crashes & hangs, and emits SARIF."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+keywords = ["mcp", "fuzzing", "security", "testing", "sarif"]
+categories = ["command-line-utilities", "development-tools::testing"]
+
+[[bin]]
+name = "mcp-fuzz"
+path = "src/main.rs"
+
+[features]
+default = ["http"]
+# Streamable HTTP transport, forwarded to mcp-probe-core.
+http = ["mcp-probe-core/http"]
+
+[dependencies]
+mcp-probe-core = { path = "../mcp-probe-core", version = "0.1.0", default-features = false }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+rand = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
