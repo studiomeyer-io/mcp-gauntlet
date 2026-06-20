@@ -8,7 +8,7 @@ authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
 rust-version.workspace = true
-keywords = ["mcp", "model-context-protocol", "json-rpc", "client", "testing"]
+keywords = ["mcp", "context-protocol", "json-rpc", "client", "testing"]
 categories = ["development-tools::testing", "api-bindings"]
 
 [features]
