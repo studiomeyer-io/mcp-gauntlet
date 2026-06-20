@@ -1,0 +1,60 @@
+# cargo-deny configuration — `cargo deny check advisories bans sources licenses`.
+# Tuned for a security/reliability tool: strict advisories, a license allowlist
+# that matches the actual dependency tree, and a sources allowlist restricted to
+# crates.io. Add to it deliberately, never to silence a real finding.
+
+[graph]
+# Check every target the workspace builds for, not just the host — catches deps
+# that only appear on macos/aarch64/windows.
+all-features = true
+
+[output]
+feature-depth = 1
+
+# ── Advisories ──────────────────────────────────────────────────────
+[advisories]
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
+ignore = [
+    # Place RUSTSEC-IDs here ONLY with a dated note + a planned fix.
+    # Example: "RUSTSEC-2024-XXXX",  # 2026-06-20: tracked via #N, fix in v0.1.1
+]
+
+# ── Bans ────────────────────────────────────────────────────────────
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+allow = []
+deny = []
+skip = []
+skip-tree = []
+
+# ── Sources (registry allowlist) ────────────────────────────────────
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+# ── Licenses ────────────────────────────────────────────────────────
+# SPDX allowlist matching the v0.1 dependency tree (tokio / serde / reqwest /
+# rustls / clap / hdrhistogram + transitive). Adding a dep with a license not
+# on this list will fail the gate — that is the point.
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "CDLA-Permissive-2.0",
+    "0BSD",
+    "BSL-1.0",
+    "Unlicense",
+]
+confidence-threshold = 0.93
+exceptions = []

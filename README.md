@@ -1,4 +1,14 @@
+<!-- studiomeyer-mcp-stack-banner:start -->
+> **Part of the [StudioMeyer MCP Stack](https://studiomeyer.io)** — Built in Mallorca 🌴 · ⭐ if you use it
+<!-- studiomeyer-mcp-stack-banner:end -->
+
 # mcp-gauntlet
+
+[![mcp-fuzz](https://img.shields.io/crates/v/mcp-fuzz.svg?label=mcp-fuzz)](https://crates.io/crates/mcp-fuzz)
+[![mcp-storm](https://img.shields.io/crates/v/mcp-storm.svg?label=mcp-storm)](https://crates.io/crates/mcp-storm)
+[![CI](https://github.com/studiomeyer-io/mcp-gauntlet/actions/workflows/ci.yml/badge.svg)](https://github.com/studiomeyer-io/mcp-gauntlet/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/studiomeyer-io/mcp-gauntlet/badge)](https://scorecard.dev/viewer/?uri=github.com/studiomeyer-io/mcp-gauntlet)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **A reliability + security toolkit for [Model Context Protocol](https://modelcontextprotocol.io) servers.**
 Two single-binary CLIs that share one fast async MCP client core:
@@ -23,7 +33,7 @@ MCP servers [fail silently](https://github.com/modelcontextprotocol/modelcontext
 ## Install
 
 ```bash
-# from crates.io (after release)
+# from crates.io
 cargo install mcp-fuzz mcp-storm
 
 # or from source
