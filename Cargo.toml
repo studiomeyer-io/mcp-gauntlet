@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/mcp-gauntlet-core", "crates/mcp-fuzz", "crates/mcp-storm"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 authors = ["StudioMeyer <hello@studiomeyer.io>"]
