@@ -100,6 +100,59 @@ fn schema_type(s: &Map<String, Value>) -> Option<String> {
     }
 }
 
+/// All declared JSON types for a property, handling both `"type": "string"` and the
+/// union form `"type": ["string", "null"]`. Returns an empty set when no `type` is
+/// declared (e.g. a combinator-only or unconstrained schema) — callers must treat the
+/// empty set as "anything goes" and not assume `string`.
+fn declared_types(subschema: &Value) -> Vec<String> {
+    match subschema.get("type") {
+        Some(Value::String(t)) => vec![t.clone()],
+        Some(Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Pick a JSON value whose type is *not* in `declared` — i.e. a genuine type-confusion
+/// payload. Returns `None` when `declared` is empty (the property accepts any type) or
+/// already spans every primitive type, so the caller can skip the mutation instead of
+/// emitting a payload that conforms = a guaranteed false positive.
+///
+/// `number` and `integer` are treated as one family: an integer literal conforms to a
+/// `number` schema, so we never offer an integer to a field declared `number`.
+fn wrong_typed_value_outside(declared: &[String]) -> Option<Value> {
+    // An empty declared set means the property accepts *any* JSON type, so there is no
+    // "wrong" value to send — return None so the caller skips type-confusion entirely
+    // (otherwise we would emit a payload that always conforms = a guaranteed false flag).
+    if declared.is_empty() {
+        return None;
+    }
+    // Candidate types in priority order; pick the first one the schema does not allow.
+    const CANDIDATES: [&str; 6] = ["string", "integer", "boolean", "array", "object", "null"];
+    let allows = |ty: &str| {
+        declared.iter().any(|d| {
+            d == ty || (ty == "integer" && d == "number") || (ty == "number" && d == "integer")
+        })
+    };
+    let chosen = CANDIDATES.iter().copied().find(|ty| !allows(ty))?;
+    Some(value_of_type(chosen))
+}
+
+/// A representative JSON value of the given primitive type, used as a type-confusion
+/// payload. Never panics; an unrecognised name yields `null`.
+fn value_of_type(ty: &str) -> Value {
+    match ty {
+        "string" => json!("not-a-number"),
+        "integer" => json!(12345),
+        "boolean" => json!("not-a-bool"),
+        "array" => json!(["not", "an", "object"]),
+        "object" => json!({"not": "an-array"}),
+        _ => Value::Null,
+    }
+}
+
 fn gen_object<R: Rng + ?Sized>(s: &Map<String, Value>, rng: &mut R, depth: usize) -> Value {
     let mut out = Map::new();
     if let Some(Value::Object(props)) = s.get("properties") {
@@ -210,11 +263,33 @@ fn gen_integer(s: &Map<String, Value>) -> i64 {
 fn gen_number(s: &Map<String, Value>) -> f64 {
     let min = s.get("minimum").and_then(Value::as_f64);
     let max = s.get("maximum").and_then(Value::as_f64);
-    match (min, max) {
+    let mut v = match (min, max) {
         (Some(lo), _) => lo,
         (None, Some(hi)) => hi.min(1.0),
         (None, None) => 1.0,
+    };
+    // Clamp to the upper bound (parity with gen_integer): a bare `minimum` above the
+    // `maximum` is a contradictory schema, but we still must not emit `lo > hi`.
+    if let Some(hi) = max {
+        if v > hi {
+            v = hi;
+        }
     }
+    // Honour multipleOf where it does not break the bounds (best-effort).
+    if let Some(mult) = s.get("multipleOf").and_then(Value::as_f64) {
+        if mult > 0.0 && v.is_finite() {
+            let lo = min.unwrap_or(0.0);
+            let mut candidate = (lo / mult).ceil() * mult;
+            // Floating ceil can land a hair below lo; nudge up one step if so.
+            if candidate < lo {
+                candidate += mult;
+            }
+            if max.map(|hi| candidate <= hi).unwrap_or(true) && candidate.is_finite() {
+                v = candidate;
+            }
+        }
+    }
+    v
 }
 
 // ---------------------------------------------------------------------------
@@ -277,6 +352,15 @@ pub struct Mutation {
     pub description: String,
     /// The `arguments` object to send to `tools/call`.
     pub arguments: Value,
+    /// Whether *successful* (non-error) acceptance of this exact input is itself a
+    /// finding — i.e. the input unambiguously violates the schema for the field it
+    /// targets, so silent acceptance proves the server is not validating.
+    ///
+    /// This is set per-mutation rather than inferred from [`MutationCategory`] alone,
+    /// because whether acceptance is noteworthy depends on the concrete schema: a
+    /// "wrong type" against a union like `["string", "null"]` may not actually be a
+    /// violation, and omitting a required field that carries a `default` is legal.
+    pub clear_violation: bool,
 }
 
 /// Known hostile string payloads, each labelled. Sent purely as *data* — never executed.
@@ -338,6 +422,9 @@ pub fn generate_mutations<R: Rng + ?Sized>(
         .unwrap_or_default();
 
     // --- Structural: the whole arguments value is wrong (always included) ---
+    // Acceptance is *not* flagged: a tool with only optional params may legitimately
+    // coerce e.g. `null`/`[]` into an empty object, so these would be noise on a
+    // well-behaved server. We send them purely to probe for crashes/hangs.
     for (desc, val) in [
         ("arguments = null", Value::Null),
         ("arguments = []", json!([])),
@@ -349,6 +436,7 @@ pub fn generate_mutations<R: Rng + ?Sized>(
             category: MutationCategory::Structural,
             description: desc.to_string(),
             arguments: val,
+            clear_violation: false,
         });
     }
     if !required.is_empty() {
@@ -356,91 +444,107 @@ pub fn generate_mutations<R: Rng + ?Sized>(
             category: MutationCategory::Structural,
             description: "arguments = {} (all required fields missing)".to_string(),
             arguments: json!({}),
+            clear_violation: false,
         });
     }
 
     // --- Missing required (always included) ---
     for field in &required {
+        // Omitting a required field is a clear violation *unless* its subschema carries a
+        // `default`: a server may legitimately fill it in, so accepting it is not a bug.
+        let has_default = props
+            .get(field)
+            .map(|s| s.get("default").is_some())
+            .unwrap_or(false);
         let mut obj = baseline_obj.clone();
         obj.remove(field);
         always.push(Mutation {
             category: MutationCategory::MissingRequired,
             description: format!("missing required field '{field}'"),
             arguments: Value::Object(obj),
+            clear_violation: !has_default,
         });
     }
 
     // --- Per-property type confusion + boundary + injection (pooled) ---
     for (name, subschema) in &props {
-        let declared = subschema
-            .get("type")
-            .and_then(Value::as_str)
-            .unwrap_or("string")
-            .to_string();
+        let types = declared_types(subschema);
+        let is_required = required.iter().any(|r| r == name);
+        let has_default = subschema.get("default").is_some();
 
-        // Type confusion: swap to an incompatible type.
-        let wrong = wrong_typed_value(&declared);
-        let mut obj = baseline_obj.clone();
-        obj.insert(name.clone(), wrong);
-        pool.push(Mutation {
-            category: MutationCategory::TypeConfusion,
-            description: format!("field '{name}' wrong type (declared {declared})"),
-            arguments: Value::Object(obj),
-        });
+        // Type confusion: only emit when we can pick a value genuinely outside the
+        // property's declared union (a `["string","null"]` field, or an untyped field,
+        // would otherwise be fed a *conforming* value and falsely flagged).
+        if let Some(wrong) = wrong_typed_value_outside(&types) {
+            let mut obj = baseline_obj.clone();
+            obj.insert(name.clone(), wrong);
+            // Acceptance is a clear violation only when the field is required and has no
+            // default — i.e. the server cannot have substituted a value of its own.
+            // `wrong_typed_value_outside` only returns Some for a non-empty declared set,
+            // so `types` is guaranteed non-empty here.
+            let label = types.join("|");
+            pool.push(Mutation {
+                category: MutationCategory::TypeConfusion,
+                description: format!("field '{name}' wrong type (declared {label})"),
+                arguments: Value::Object(obj),
+                clear_violation: is_required && !has_default,
+            });
+        }
 
-        match declared.as_str() {
-            "string" => {
-                // Boundary strings.
-                for (desc, v) in [
-                    ("empty string", String::new()),
-                    ("100k-char string", "A".repeat(100_000)),
-                ] {
-                    let mut o = baseline_obj.clone();
-                    o.insert(name.clone(), json!(v));
-                    pool.push(Mutation {
-                        category: MutationCategory::Boundary,
-                        description: format!("field '{name}': {desc}"),
-                        arguments: Value::Object(o),
-                    });
-                }
-                // Injections.
-                for (label, payload) in injection_payloads() {
-                    let mut o = baseline_obj.clone();
-                    o.insert(name.clone(), json!(payload));
-                    pool.push(Mutation {
-                        category: MutationCategory::Injection,
-                        description: format!("field '{name}': {label}"),
-                        arguments: Value::Object(o),
-                    });
-                }
-            }
-            "integer" | "number" => {
-                for (desc, v) in [
-                    ("zero", json!(0)),
-                    ("negative", json!(-1)),
-                    ("i64::MAX", json!(i64::MAX)),
-                    ("i64::MIN", json!(i64::MIN)),
-                    ("huge float", json!(1e308)),
-                ] {
-                    let mut o = baseline_obj.clone();
-                    o.insert(name.clone(), v);
-                    pool.push(Mutation {
-                        category: MutationCategory::Boundary,
-                        description: format!("field '{name}': {desc}"),
-                        arguments: Value::Object(o),
-                    });
-                }
-            }
-            "array" => {
+        // Boundary + injection by the property's primary declared type. A union like
+        // `["string","null"]` still gets string fuzzing because we check membership.
+        if types.iter().any(|t| t == "string") {
+            for (desc, v) in [
+                ("empty string", String::new()),
+                ("100k-char string", "A".repeat(100_000)),
+            ] {
                 let mut o = baseline_obj.clone();
-                o.insert(name.clone(), json!([]));
+                o.insert(name.clone(), json!(v));
                 pool.push(Mutation {
                     category: MutationCategory::Boundary,
-                    description: format!("field '{name}': empty array"),
+                    description: format!("field '{name}': {desc}"),
                     arguments: Value::Object(o),
+                    clear_violation: false,
                 });
             }
-            _ => {}
+            for (label, payload) in injection_payloads() {
+                let mut o = baseline_obj.clone();
+                o.insert(name.clone(), json!(payload));
+                pool.push(Mutation {
+                    category: MutationCategory::Injection,
+                    description: format!("field '{name}': {label}"),
+                    arguments: Value::Object(o),
+                    clear_violation: false,
+                });
+            }
+        }
+        if types.iter().any(|t| t == "integer" || t == "number") {
+            for (desc, v) in [
+                ("zero", json!(0)),
+                ("negative", json!(-1)),
+                ("i64::MAX", json!(i64::MAX)),
+                ("i64::MIN", json!(i64::MIN)),
+                ("huge float", json!(1e308)),
+            ] {
+                let mut o = baseline_obj.clone();
+                o.insert(name.clone(), v);
+                pool.push(Mutation {
+                    category: MutationCategory::Boundary,
+                    description: format!("field '{name}': {desc}"),
+                    arguments: Value::Object(o),
+                    clear_violation: false,
+                });
+            }
+        }
+        if types.iter().any(|t| t == "array") {
+            let mut o = baseline_obj.clone();
+            o.insert(name.clone(), json!([]));
+            pool.push(Mutation {
+                category: MutationCategory::Boundary,
+                description: format!("field '{name}': empty array"),
+                arguments: Value::Object(o),
+                clear_violation: false,
+            });
         }
     }
 
@@ -455,6 +559,7 @@ pub fn generate_mutations<R: Rng + ?Sized>(
             category: MutationCategory::ExtraField,
             description: "unexpected extra field with SQL payload".to_string(),
             arguments: Value::Object(o),
+            clear_violation: false,
         });
     }
 
@@ -472,12 +577,14 @@ pub fn generate_mutations<R: Rng + ?Sized>(
                 category: MutationCategory::Nesting,
                 description: "64-level nested array in first field".to_string(),
                 arguments: Value::Object(o),
+                clear_violation: false,
             });
         } else {
             pool.push(Mutation {
                 category: MutationCategory::Nesting,
                 description: "64-level nested array as arguments".to_string(),
                 arguments: nested,
+                clear_violation: false,
             });
         }
     }
@@ -489,17 +596,6 @@ pub fn generate_mutations<R: Rng + ?Sized>(
 
     always.extend(pool);
     always
-}
-
-fn wrong_typed_value(declared: &str) -> Value {
-    match declared {
-        "string" => json!(12345),
-        "integer" | "number" => json!("not-a-number"),
-        "boolean" => json!("not-a-bool"),
-        "array" => json!({"not": "an-array"}),
-        "object" => json!(["not", "an", "object"]),
-        _ => json!(null),
-    }
 }
 
 #[cfg(test)]
@@ -657,5 +753,133 @@ mod tests {
         );
         let s = json!({"type":"integer","minimum": i64::MIN, "multipleOf": 5});
         let _ = gen_integer(s.as_object().unwrap());
+    }
+
+    #[test]
+    fn gen_number_clamps_to_max_and_honours_multiple_of() {
+        // bare minimum above maximum is contradictory — must clamp to the upper bound,
+        // never return lo > hi.
+        let s = json!({"type":"number","minimum": 10.0, "maximum": 5.0});
+        assert!(gen_number(s.as_object().unwrap()) <= 5.0);
+        // multipleOf rounds UP to a conforming multiple within bounds.
+        let s = json!({"type":"number","minimum": 2.5, "multipleOf": 2.0});
+        let v = gen_number(s.as_object().unwrap());
+        assert!(v >= 2.5, "got {v}");
+        assert!((v / 2.0).fract().abs() < 1e-9, "not a multiple of 2: {v}");
+        // pure minimum is honoured as-is.
+        assert_eq!(
+            gen_number(json!({"type":"number","minimum": 0.0}).as_object().unwrap()),
+            0.0
+        );
+    }
+
+    #[test]
+    fn type_confusion_against_a_nullable_string_is_not_a_clear_violation() {
+        // `["string","null"]` accepts strings, so the only genuine type-confusion value
+        // we can pick is an integer-or-other; but since the field is *not* required, the
+        // server may legitimately accept it. The mutation must NOT be a clear violation,
+        // and we must never feed it a value the union actually accepts.
+        let schema = json!({
+            "type": "object",
+            "properties": {"note": {"type": ["string", "null"]}}
+        });
+        let muts = generate_mutations(&schema, &mut rng(), 200);
+        for m in muts
+            .iter()
+            .filter(|m| m.category == MutationCategory::TypeConfusion)
+        {
+            let v = &m.arguments["note"];
+            assert!(
+                !v.is_string() && !v.is_null(),
+                "type-confusion fed a conforming value to a nullable string: {v}"
+            );
+            assert!(
+                !m.clear_violation,
+                "acceptance of a non-required union field must not be flagged"
+            );
+        }
+    }
+
+    #[test]
+    fn nullable_string_still_gets_string_fuzzing() {
+        // Regression: a `["string","null"]` field used to be misread as the fallback
+        // `string` for the *primary* type only; the union form must still receive the
+        // boundary + injection battery.
+        let schema = json!({
+            "type": "object",
+            "properties": {"q": {"type": ["string", "null"]}},
+            "required": ["q"]
+        });
+        let muts = generate_mutations(&schema, &mut rng(), 1000);
+        let injections = muts
+            .iter()
+            .filter(|m| m.category == MutationCategory::Injection)
+            .count();
+        assert_eq!(injections, injection_payloads().len());
+    }
+
+    #[test]
+    fn type_confusion_against_required_typed_field_is_a_clear_violation() {
+        let schema = json!({
+            "type": "object",
+            "properties": {"n": {"type": "integer"}},
+            "required": ["n"]
+        });
+        let muts = generate_mutations(&schema, &mut rng(), 200);
+        let tc = muts
+            .iter()
+            .find(|m| m.category == MutationCategory::TypeConfusion)
+            .expect("a type-confusion mutation");
+        // An integer field fed a string: genuine violation of a required field.
+        assert!(tc.arguments["n"].is_string());
+        assert!(tc.clear_violation);
+    }
+
+    #[test]
+    fn missing_required_with_default_is_not_a_clear_violation() {
+        // A required field that carries a `default` may be filled in by the server, so
+        // omitting it is not an unambiguous violation.
+        let schema = json!({
+            "type": "object",
+            "properties": {"mode": {"type": "string", "default": "fast"}},
+            "required": ["mode"]
+        });
+        let muts = generate_mutations(&schema, &mut rng(), 50);
+        let mr = muts
+            .iter()
+            .find(|m| m.category == MutationCategory::MissingRequired)
+            .expect("a missing-required mutation");
+        assert!(!mr.clear_violation);
+
+        // Without a default it IS a clear violation.
+        let schema = json!({
+            "type": "object",
+            "properties": {"mode": {"type": "string"}},
+            "required": ["mode"]
+        });
+        let muts = generate_mutations(&schema, &mut rng(), 50);
+        let mr = muts
+            .iter()
+            .find(|m| m.category == MutationCategory::MissingRequired)
+            .expect("a missing-required mutation");
+        assert!(mr.clear_violation);
+    }
+
+    #[test]
+    fn untyped_field_skips_type_confusion() {
+        // A property with no declared type accepts anything, so there is no "wrong type"
+        // to send — emitting one would be a guaranteed false positive.
+        let schema = json!({
+            "type": "object",
+            "properties": {"any": {}},
+            "required": ["any"]
+        });
+        let muts = generate_mutations(&schema, &mut rng(), 200);
+        assert!(
+            !muts
+                .iter()
+                .any(|m| m.category == MutationCategory::TypeConfusion),
+            "untyped field must not produce a type-confusion mutation"
+        );
     }
 }
