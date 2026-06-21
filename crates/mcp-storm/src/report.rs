@@ -138,7 +138,9 @@ fn truncate(s: &str, max: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::truncate;
+    use super::{truncate, ToolStats};
+    use hdrhistogram::Histogram;
+    use std::time::Duration;
 
     #[test]
     fn truncate_is_char_safe_on_multibyte() {
@@ -149,5 +151,78 @@ mod tests {
         assert!(out.chars().count() <= 20);
         assert!(out.ends_with('…'));
         assert_eq!(truncate("short", 20), "short");
+    }
+
+    fn hist_of_ms(samples: &[u64]) -> Histogram<u64> {
+        let mut h = Histogram::<u64>::new(3).unwrap();
+        for &ms in samples {
+            // values are stored in microseconds (see ToolStats::from_acc).
+            h.record(ms * 1000).unwrap();
+        }
+        h
+    }
+
+    #[test]
+    fn empty_histogram_yields_all_zero_percentiles() {
+        let h = Histogram::<u64>::new(3).unwrap();
+        let s = ToolStats::from_acc("t".into(), &h, 0, 0, Duration::from_secs(1));
+        assert_eq!(s.p50_ms, 0.0);
+        assert_eq!(s.p95_ms, 0.0);
+        assert_eq!(s.p99_ms, 0.0);
+        assert_eq!(s.max_ms, 0.0);
+        assert_eq!(s.mean_ms, 0.0);
+        assert_eq!(s.error_rate_pct, 0.0);
+        assert_eq!(s.throughput_rps, 0.0);
+    }
+
+    #[test]
+    fn single_sample_collapses_all_percentiles_to_that_value() {
+        let h = hist_of_ms(&[7]);
+        let s = ToolStats::from_acc("t".into(), &h, 1, 0, Duration::from_secs(1));
+        // hdrhistogram is bucketed; with 3 sig figs 7ms is exact.
+        assert!((s.p50_ms - 7.0).abs() < 0.1, "p50={}", s.p50_ms);
+        assert!((s.p95_ms - 7.0).abs() < 0.1, "p95={}", s.p95_ms);
+        assert!((s.p99_ms - 7.0).abs() < 0.1, "p99={}", s.p99_ms);
+        assert!((s.max_ms - 7.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn percentiles_are_monotonic_and_p99_tracks_the_tail() {
+        // 1..=100 ms. p99 must land in the tail (~99ms), strictly above p50 (~50ms),
+        // proving "p99" is really the 99th percentile, not p100/max or p50.
+        let samples: Vec<u64> = (1..=100).collect();
+        let h = hist_of_ms(&samples);
+        let s = ToolStats::from_acc("t".into(), &h, 100, 0, Duration::from_secs(1));
+        assert!(s.p50_ms <= s.p95_ms, "p50 {} <= p95 {}", s.p50_ms, s.p95_ms);
+        assert!(s.p95_ms <= s.p99_ms, "p95 {} <= p99 {}", s.p95_ms, s.p99_ms);
+        assert!(s.p99_ms <= s.max_ms, "p99 {} <= max {}", s.p99_ms, s.max_ms);
+        assert!(s.p50_ms < s.p99_ms, "p99 must exceed p50");
+        // p99 of 1..100 sits around 99ms (allow histogram bucketing slack).
+        assert!(s.p99_ms >= 95.0, "p99 {} should be near 99ms", s.p99_ms);
+        assert!(s.p99_ms < s.max_ms + 5.0);
+        // p50 of 1..100 sits around 50ms.
+        assert!(
+            (40.0..=60.0).contains(&s.p50_ms),
+            "p50 {} near 50ms",
+            s.p50_ms
+        );
+    }
+
+    #[test]
+    fn error_rate_is_a_percentage_of_all_calls() {
+        let h = hist_of_ms(&[1, 2, 3]); // 3 successful latencies recorded
+                                        // 10 total calls, 2 of them errors -> 20%.
+        let s = ToolStats::from_acc("t".into(), &h, 10, 2, Duration::from_secs(2));
+        assert!(
+            (s.error_rate_pct - 20.0).abs() < 1e-9,
+            "got {}",
+            s.error_rate_pct
+        );
+        // throughput counts ALL calls over the window: 10 / 2s = 5 rps.
+        assert!(
+            (s.throughput_rps - 5.0).abs() < 1e-9,
+            "got {}",
+            s.throughput_rps
+        );
     }
 }

@@ -77,3 +77,69 @@ fn impossible_p95_threshold_fails_the_gate() {
         "impossible threshold should fail gate"
     );
 }
+
+#[test]
+fn generous_thresholds_pass_the_gate() {
+    // Regression guard against an "always exit 0" *or* "always fail" gate: with a roomy
+    // p95 budget and error-rate ceiling, a healthy echo run must exit 0 *because the
+    // gate evaluated and passed*, not because gating is a no-op.
+    let status = Command::new(bin())
+        .args([
+            "run",
+            "--stdio",
+            "--quiet",
+            "--tool",
+            "echo",
+            "--concurrency",
+            "2",
+            "--requests",
+            "40",
+            "--threshold-p95-ms",
+            "5000",
+            "--max-error-rate",
+            "1.0",
+            "--",
+            bin(),
+            "mock",
+        ])
+        .status()
+        .expect("failed to launch mcp-storm");
+    assert_eq!(
+        status.code(),
+        Some(0),
+        "healthy run under generous thresholds should pass the gate"
+    );
+}
+
+#[test]
+fn error_rate_gate_fails_when_calls_time_out() {
+    // Drive the `slow` tool (the mock sleeps for its `ms` arg, generated near its
+    // maximum) with a 1ms per-call timeout so every call times out → 100% error rate →
+    // the --max-error-rate gate must fail (exit 1). Proves errors actually feed the gate.
+    let status = Command::new(bin())
+        .args([
+            "run",
+            "--stdio",
+            "--quiet",
+            "--tool",
+            "slow",
+            "--concurrency",
+            "2",
+            "--requests",
+            "8",
+            "--timeout-ms",
+            "1",
+            "--max-error-rate",
+            "50.0",
+            "--",
+            bin(),
+            "mock",
+        ])
+        .status()
+        .expect("failed to launch mcp-storm");
+    assert_eq!(
+        status.code(),
+        Some(1),
+        "timed-out calls should push the error rate over the gate"
+    );
+}

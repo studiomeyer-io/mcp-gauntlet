@@ -146,7 +146,12 @@ pub async fn run(args: RunArgs) -> anyhow::Result<i32> {
                 .await
             {
                 Ok(res) => {
-                    if m.category.is_clear_schema_violation() && !res.is_error {
+                    // Only flag acceptance when *this* mutation is an unambiguous schema
+                    // violation for the field it targets (see Mutation::clear_violation) —
+                    // not merely because its category is usually a violation. This keeps
+                    // union-typed (`["string","null"]`) and defaulted fields from
+                    // producing false `accepted-invalid` findings.
+                    if m.clear_violation && !res.is_error {
                         findings.push(Finding::accepted_invalid(&tool.name, &m));
                     }
                 }

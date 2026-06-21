@@ -469,6 +469,23 @@ fn finalize_response(resp: JsonRpcResponse) -> Result<Value, Error> {
     }
 }
 
+#[cfg(test)]
+mod id_tests {
+    use super::value_as_u64;
+    use serde_json::json;
+
+    #[test]
+    fn value_as_u64_accepts_numeric_and_string_ids() {
+        // JSON-RPC ids may be numbers or strings; the demultiplexer must correlate both
+        // back to the right pending request.
+        assert_eq!(value_as_u64(&json!(7)), Some(7));
+        assert_eq!(value_as_u64(&json!("7")), Some(7));
+        assert_eq!(value_as_u64(&json!("not-a-number")), None);
+        assert_eq!(value_as_u64(&json!(null)), None);
+        assert_eq!(value_as_u64(&json!(-1)), None);
+    }
+}
+
 #[cfg(all(test, feature = "http"))]
 mod http_tests {
     use super::*;
@@ -498,5 +515,27 @@ mod http_tests {
     #[test]
     fn empty_body_is_null() {
         assert_eq!(parse_rpc_payload("", 1).unwrap(), Value::Null);
+    }
+
+    #[test]
+    fn sse_response_with_a_mismatched_id_is_not_delivered() {
+        // Safety: a frame whose id does not match the request must never be returned to
+        // the caller (that would hand one request another's result). With only a non-
+        // matching frame present, parsing must error rather than silently mis-deliver.
+        let sse = "data: {\"jsonrpc\":\"2.0\",\"id\":999,\"result\":{\"v\":1}}\n\n";
+        let r = parse_rpc_payload(sse, 1);
+        assert!(matches!(r, Err(Error::Protocol(_))), "got {r:?}");
+    }
+
+    #[test]
+    fn sse_picks_the_matching_frame_among_several() {
+        let sse = "data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"v\":1}}\ndata: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"v\":2}}\n\n";
+        assert_eq!(parse_rpc_payload(sse, 2).unwrap()["v"], 2);
+    }
+
+    #[test]
+    fn sse_done_sentinel_is_skipped() {
+        let sse = "data: [DONE]\ndata: {\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"ok\":true}}\n\n";
+        assert_eq!(parse_rpc_payload(sse, 5).unwrap()["ok"], true);
     }
 }

@@ -75,7 +75,12 @@ fn tool_defs() -> Value {
             "description": "Sleep for `ms` milliseconds, then return.",
             "inputSchema": {
                 "type": "object",
-                "properties": {"ms": {"type": "integer", "minimum": 0, "maximum": 60000}},
+                // `default` makes the value generator pick a real (non-zero) sleep so the
+                // tool deterministically drives latency in load tests / timeout self-tests,
+                // rather than collapsing to ms=0 (the bare `minimum`).
+                "properties": {
+                    "ms": {"type": "integer", "minimum": 0, "maximum": 60000, "default": 5}
+                },
                 "required": ["ms"]
             }
         },
