@@ -31,6 +31,13 @@ updates:
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 3
+    # dtolnay/rust-toolchain encodes the TOOLCHAIN VERSION in its tag — the
+    # MSRV job pins it deliberately (currently 1.89). A dependabot "bump"
+    # rewrites the pin to whatever the newest tag is, which both defeats the
+    # MSRV check and can point at a Rust version that does not exist yet
+    # (PR #9 tried to install nonexistent 1.100.0). Never auto-bump it.
+    ignore:
+      - dependency-name: "dtolnay/rust-toolchain"
     commit-message:
       prefix: "ci"
       include: "scope"
