@@ -7,6 +7,12 @@ on:
   push:
     tags: ["v*"]
 
+# Least privilege: jeder Job hier liest nur den Quelltext. Ohne diesen
+# Block erbt der Lauf die Standardrechte der Organisation, die schreibend
+# sein koennen (OpenSSF Scorecard TokenPermissionsID, Schweregrad high).
+permissions:
+  contents: read
+
 jobs:
   publish:
     runs-on: ubuntu-latest

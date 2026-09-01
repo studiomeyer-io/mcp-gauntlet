@@ -9,6 +9,12 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
+# Least privilege: jeder Job hier liest nur den Quelltext. Ohne diesen
+# Block erbt der Lauf die Standardrechte der Organisation, die schreibend
+# sein koennen (OpenSSF Scorecard TokenPermissionsID, Schweregrad high).
+permissions:
+  contents: read
+
 jobs:
   test:
     name: fmt · clippy · test
