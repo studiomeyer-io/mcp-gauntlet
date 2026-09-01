@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.1] - 2026-06-21
+
 ### Fixed
 
 - **`mcp-fuzz` / `mcp-gauntlet-core`: false-positive `accepted-invalid` findings on
